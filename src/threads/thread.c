@@ -179,7 +179,10 @@ thread_create (const char *name, int priority,
   t = palloc_get_page (PAL_ZERO);
   if (t == NULL)
     return TID_ERROR;
-
+  
+  /* wjhh2008 */
+  //if (thread_mlfqs)	priority = PRI_DEFAULT;
+  
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
@@ -208,8 +211,8 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-  //printf("%s is created priority: %d\n ",name,priority);
-  if (thread_current()->priority <= t->priority)
+//  printf("%s is created priority: %d\n ",name,priority);
+  if (thread_current()->priority < t->priority)
 	thread_yield();
   return tid;
 }
@@ -354,7 +357,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void 
 block_check(struct thread *t,void *aux)
 {
-	if (t->status == THREAD_BLOCKED)
+	if (t->status == THREAD_BLOCKED && t->notready != -1)
 	{
 		t->notready--;
 		if (t->notready == 0)
@@ -384,9 +387,14 @@ void thread_cheakpri(){
   struct list_elem* top=list_begin(&ready_list);
   struct thread *ready = list_entry (top, struct thread, elem);
   
-  if (cur->priority < ready->priority){
+  if (cur != NULL && cur->priority < ready->priority){
 	thread_yield();
   }
+}
+
+
+void thread_prisort(){
+	list_sort(&ready_list,thread_less,NULL);
 }
 /* /My function */
 
@@ -395,10 +403,14 @@ void thread_cheakpri(){
 void
 thread_set_priority (int new_priority) 
 {
+  /*  wjhh2008 */
+  //if (thread_mlfqs) return;
+  
   //printf("%s %d ->",thread_current()->name,thread_current()->priority);
   thread_current ()->priority = new_priority;
   //printf("%d\n",new_priority);
   
+  /* wjhh2008 */
   if (!list_empty(&ready_list)){
     if (new_priority <= list_entry (list_begin(&ready_list), struct thread,elem)->priority){
 		//printf("%s is swithed\n",thread_current()->name);
@@ -526,7 +538,11 @@ init_thread (struct thread *t, const char *name, int priority)
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
+  /* wjhh2008*/
   t->notready = -1;
+  //t->old_pri = -1;
+  list_init(&t->dthread_list);
+  
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;

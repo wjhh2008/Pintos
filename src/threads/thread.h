@@ -100,9 +100,20 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    
     int64_t notready;					/* notready is false when notready equal to 0*/
+    //int old_pri;						/* If thread is not donated old_pri = -1 (inited in init_thread()) */
+    struct list dthread_list;
   };
-
+struct dthread
+  {
+	struct list_elem thread_elem;
+	struct list_elem lock_elem;
+	struct thread *donator;
+	struct thread *donatee;
+	int old_pri;
+	bool finish;
+  };
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -119,6 +130,7 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+void thread_prisort(void);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);

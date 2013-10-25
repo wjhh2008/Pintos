@@ -68,8 +68,8 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      //list_push_back (&sema->waiters, &thread_current ()->elem);
-      list_insert_ordered(&sema->waiters, &thread_current()->elem, thread_less, NULL);
+      list_push_back (&sema->waiters, &thread_current ()->elem);
+      //list_insert_ordered(&sema->waiters, &thread_current()->elem, thread_less, NULL);
       thread_block ();
     }
   sema->value--;
@@ -115,9 +115,12 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
+  
+  if (!list_empty (&sema->waiters)) {
+	list_sort(&sema->waiters, thread_less, NULL);
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
+  }
 
   sema->value++;
   intr_set_level (old_level);
@@ -186,6 +189,9 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
+  /* whhh2008 begin*/
+  list_init(&lock->lock_dthread_list);
+  /* wjhh2008 end*/
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -202,9 +208,52 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-
+  /*  old_implement
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+      old_implement  */
+      
+  /* wjhh2008 begin */
+  
+  
+  struct dthread drc;
+  struct thread *holder, *curr;
+  holder = lock->holder;
+  curr = thread_current();
+  
+  
+  
+  bool success = lock_try_acquire(lock);	
+  if (success){  //replace with while later
+	lock->holder = curr;
+  }else{
+	ASSERT(lock->holder != NULL);
+	enum intr_level old_level;
+	old_level = intr_disable ();
+	
+	if (holder->priority < curr->priority){
+		
+		drc.donatee = holder;
+		drc.donator = curr;
+		drc.old_pri = holder->priority;
+		drc.finish = false;
+		list_push_back(&lock->lock_dthread_list, &drc.lock_elem);
+		list_push_back(&holder->dthread_list,&drc.thread_elem);
+		//interrupt off?
+		holder->priority = curr->priority;
+		thread_prisort();
+		//interrupt on?
+	}
+	  
+	intr_set_level (old_level);
+	
+	sema_down (&lock->semaphore); //thread_yield()
+	lock->holder = curr;
+	
+  }
+  
+   /* wjhh2008 end*/
+  
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -237,7 +286,27 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
+  /* wjhh2008 begin */
+  struct thread *t = thread_current();
+  struct dthread *dr;
+  //enum intr_level old_level;
+  //old_level = intr_disable ();
+  if (!list_empty(&lock->lock_dthread_list)){
+	dr = list_entry(list_pop_back(&lock->lock_dthread_list),struct dthread,lock_elem);
+	dr->finish = true;
+	//cheak donatee thread
+	struct thread *donatee = dr->donatee;
+	while (!list_empty(&donatee->dthread_list)){
+		struct dthread *enth = list_entry(list_back(&donatee->dthread_list),struct dthread,thread_elem);
+		//printf("%s %s\n",enth->donatee->name,enth->donator->name);
+		if (!enth->finish) break;
+		list_pop_back(&donatee->dthread_list);
+		enth->donatee->priority = enth->old_pri;
+	}
+	thread_prisort();
+  }
+  //intr_set_level (old_level);
+  /* wjhh2008  end*/
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
