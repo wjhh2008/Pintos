@@ -407,7 +407,33 @@ thread_set_priority (int new_priority)
   //if (thread_mlfqs) return;
   
   //printf("%s %d ->",thread_current()->name,thread_current()->priority);
-  thread_current ()->priority = new_priority;
+  struct thread *curr = thread_current ();
+  struct list_elem *e;
+  struct dthread *dt;
+  
+  if (list_empty(&curr->dthread_list)){
+	curr->priority = new_priority;
+  }else{
+	if (curr->priority > new_priority){
+	  dt = list_entry(list_begin(&curr->dthread_list),struct dthread,thread_elem);
+	  if (dt->old_pri >= new_priority){
+		dt->old_pri = new_priority;
+	  }else
+		  for (e = list_begin (&curr->dthread_list); e != list_end (&curr->dthread_list);
+			   e = list_next (e))
+			{
+			  dt = list_entry(e,struct dthread,thread_elem);
+			  if (dt->old_pri < new_priority)
+				dt->old_pri = new_priority;
+			  else
+				break;
+			}
+	}else
+		curr->priority = new_priority;
+	
+  }
+
+  //curr->priority = new_priority;
   //printf("%d\n",new_priority);
   
   /* wjhh2008 */
@@ -540,7 +566,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   /* wjhh2008*/
   t->notready = -1;
-  //t->old_pri = -1;
+  t->blocked = NULL;
+  
   list_init(&t->dthread_list);
   
   strlcpy (t->name, name, sizeof t->name);

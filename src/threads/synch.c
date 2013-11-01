@@ -217,7 +217,8 @@ lock_acquire (struct lock *lock)
   
   
   struct dthread drc;
-  struct thread *holder, *curr;
+  struct thread *holder, *curr, *ho, *cu;
+  struct lock *other;
   holder = lock->holder;
   curr = thread_current();
   
@@ -241,15 +242,36 @@ lock_acquire (struct lock *lock)
 		list_push_back(&holder->dthread_list,&drc.thread_elem);
 		//interrupt off?
 		holder->priority = curr->priority;
-		thread_prisort();
+		//thread_prisort();
 		//interrupt on?
+		//for nest_test
+		ho = holder;
+		while (ho->status == THREAD_BLOCKED && ho->blocked!=NULL){
+			cu = ho;
+			other = ho->blocked;
+			ho = other->holder;
+			if (ho->priority < cu->priority) {
+				struct dthread *dr = (struct dthread *)malloc(sizeof(struct dthread));
+				dr->donatee = ho;
+				dr->donator = cu;
+				dr->old_pri = ho->priority;
+				dr->finish = false;
+				list_push_back(&other->lock_dthread_list, &dr->lock_elem);
+				list_push_back(&ho->dthread_list,&dr->thread_elem);
+				ho->priority = cu->priority;
+			}else
+				break;
+		}
+		thread_prisort();
 	}
-	  
 	intr_set_level (old_level);
+	
+	curr->blocked = lock;
 	
 	sema_down (&lock->semaphore); //thread_yield()
 	lock->holder = curr;
 	
+	curr->blocked = NULL;
   }
   
    /* wjhh2008 end*/
@@ -289,9 +311,9 @@ lock_release (struct lock *lock)
   /* wjhh2008 begin */
   struct thread *t = thread_current();
   struct dthread *dr;
-  //enum intr_level old_level;
-  //old_level = intr_disable ();
-  if (!list_empty(&lock->lock_dthread_list)){
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  while (!list_empty(&lock->lock_dthread_list)){
 	dr = list_entry(list_pop_back(&lock->lock_dthread_list),struct dthread,lock_elem);
 	dr->finish = true;
 	//cheak donatee thread
@@ -305,7 +327,7 @@ lock_release (struct lock *lock)
 	}
 	thread_prisort();
   }
-  //intr_set_level (old_level);
+  intr_set_level (old_level);
   /* wjhh2008  end*/
   lock->holder = NULL;
   sema_up (&lock->semaphore);

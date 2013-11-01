@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 
+#include "threads/synch.h"
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -104,6 +105,7 @@ struct thread
     int64_t notready;					/* notready is false when notready equal to 0*/
     //int old_pri;						/* If thread is not donated old_pri = -1 (inited in init_thread()) */
     struct list dthread_list;
+    struct lock *blocked;
   };
 struct dthread
   {
